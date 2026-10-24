@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Debate Arena</title>
+<style>
+  :root{
+    --bg:#0b0f1a; --panel:#141b2d; --line:#243049; --text:#e6ebf5; --dim:#8b96ad;
+    --a:#38bdf8; --b:#f472b6; --ok:#34d399; --warn:#fbbf24;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;color:var(--text);
+    background:radial-gradient(1100px 600px at 50% -10%,#1a2440 0%,var(--bg) 60%);
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:26px 18px 60px}
+  h1{font-size:24px;margin:0 0 6px}
+  h2{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--dim);margin:0 0 22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  label{display:block;font-size:13px;color:var(--dim);margin:16px 0 6px}
+  input[type=text],input:not([type]){width:100%;background:#0e1424;border:1px solid var(--line);
+    color:var(--text);border-radius:10px;padding:11px 12px;font:inherit;outline:none}
+  input:focus{border-color:var(--a)}
+  input[type=range]{width:100%;accent-color:var(--a)}
+  button{background:linear-gradient(135deg,#2563eb,#7c3aed);border:0;color:#fff;border-radius:10px;
+    padding:11px 18px;font:inherit;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.ghost{background:#1c2740;border:1px solid var(--line)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .link{background:#0e1424;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;
+    color:var(--a);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:220px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .chip{background:#1c2740;border-radius:999px;padding:4px 11px;font-size:13px;border:1px solid transparent}
+  button.emoji{background:#1c2740;border:1px solid var(--line);border-radius:12px;font-size:20px;padding:6px 10px}
+  button.emoji.on{outline:2px solid var(--a);outline-offset:1px}
+  .muted{color:var(--dim);font-size:13px}
+  /* arena */
+  .top{display:flex;gap:12px;align-items:center;justify-content:space-between;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 16px;margin-bottom:14px}
+  .timer{font-variant-numeric:tabular-nums;font-weight:700;font-size:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;
+    min-height:280px;display:flex;flex-direction:column}
+  .panel.a{border-top:3px solid var(--a)} .panel.b{border-top:3px solid var(--b)}
+  .panel h3{margin:0;font-size:15px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .panel .who{color:var(--dim);font-size:12px;font-weight:400}
+  .text{white-space:pre-wrap;margin-top:10px;flex:1;font-size:16px;overflow-y:auto;max-height:340px}
+  .text.live::after{content:"▍";color:var(--dim);animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .tag{font-size:12px;color:var(--warn);min-height:17px;margin-top:6px}
+  .vote{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .bar{display:flex;height:14px;border-radius:8px;overflow:hidden;background:#0e1424}
+  .bar .a{background:var(--a);transition:width .3s} .bar .b{background:var(--b);transition:width .3s}
+  .votes{display:flex;justify-content:space-between;font-size:13px;color:var(--dim);margin-top:6px}
+  .votebtns{display:flex;gap:10px;margin-top:10px}
+  .votebtns button{flex:1}
+  .votebtns .va{background:var(--a);color:#04121c}
+  .votebtns .vb{background:var(--b);color:#240614}
+  .votebtns button.on{outline:2px solid #fff;outline-offset:2px}
+  .countdown{font-size:13px;color:var(--warn);text-align:center;margin-top:8px;min-height:18px}
+  .voters{display:flex;flex-direction:column;gap:6px;margin-top:12px;max-height:170px;overflow-y:auto}
+  .voter{display:flex;justify-content:space-between;gap:10px;background:#0e1424;border:1px solid var(--line);
+    border-radius:8px;padding:6px 10px;font-size:13px}
+  .vota{color:var(--a);font-weight:600}
+  .votb{color:var(--b);font-weight:600}
+  .waiting{color:var(--dim)}
+  .winner{text-align:center;margin-bottom:16px}
+  a{color:var(--a)}
+  .btn-link{display:inline-block;background:#1c2740;color:var(--text);text-decoration:none;
+    padding:10px 16px;border-radius:10px;border:1px solid var(--line);font-weight:600}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+"use strict";
+
+const app = document.getElementById("app");
+const state = {
+  id: null, topic: "", seconds: 120, status: "waiting", isHost: false,
+  agents: { A: { name: "Agent A", model: "" }, B: { name: "Agent B", model: "" } },
+  viewers: [], votes: { A: 0, B: 0, total: 0 }, voters: [], transcript: [], winner: null,
+  secondsLeft: 0, myVote: null, viewerId: null, ws: null, hostToken: null
+};
+
+/* ---------- helpers ---------- */
+function esc(value) {
+  const div = document.createElement("div");
+  div.textContent = value == null ? "" : String(value);
+  return div.innerHTML;
+}
+function fmt(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+}
+async function api(path, options) {
+  const opts = Object.assign({}, options);
+  opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch (e) {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+function applyMeta(info) {
+  state.topic = info.topic;
+  state.seconds = info.seconds;
+  state.status = info.status || "waiting";
+  if (info.agents) state.agents = info.agents;
+  state.secondsLeft = info.seconds;
+}
+
+/* ---------- socket ---------- */
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const qs = state.viewerId ? "?viewer_id=" + encodeURIComponent(state.viewerId) : "";
+  const ws = new WebSocket(proto + "//" + location.host + "/ws/debates/" + state.id + qs);
+  state.ws = ws;
+  ws.onmessage = function (ev) {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    handle(msg);
+  };
+  ws.onclose = function () { setTimeout(connect, 2000); };
+}
+function handle(msg) {
+  switch (msg.type) {
+    case "snapshot":
+      state.topic = msg.debate.topic;
+      state.seconds = msg.debate.seconds;
+      state.status = msg.debate.status;
+      state.agents = msg.debate.agents;
+      state.transcript = msg.transcript || [];
+      state.votes = msg.votes;
+      state.voters = msg.voters || [];
+      state.viewers = msg.viewers || [];
+      state.myVote = msg.your_vote || null;
+      state.winner = msg.winner || null;
+      state.secondsLeft = msg.seconds_left;
+      renderByStatus();
+      break;
+    case "started":
+      state.status = "running";
+      state.secondsLeft = state.seconds;
+      renderByStatus();
+      break;
+    case "tick":
+      state.secondsLeft = msg.seconds_left;
+      updateTimer();
+      break;
+    case "turn_start":
+      onTurnStart(msg);
+      break;
+    case "search":
+      setTag(msg.agent, "🔎 searching the web…");
+      break;
+    case "token":
+      appendText(msg.agent, msg.text);
+      break;
+    case "turn_end":
+      finishTurn(msg);
+      break;
+    case "cooldown":
+      showCooldown(msg.seconds_left, msg.next);
+      break;
+    case "votes":
+      state.votes = msg.votes;
+      state.voters = msg.voters || state.voters;
+      updateVotes();
+      break;
+    case "viewers":
+      state.viewers = msg.viewers;
+      state.voters = msg.voters || state.voters;
+      updateViewers();
+      break;
+    case "finished":
+      state.status = "finished";
+      state.winner = msg.winner;
+      state.votes = msg.votes;
+      state.voters = msg.voters || state.voters;
+      state.secondsLeft = 0;
+      updateTimer();
+      updateVotes();
+      showWinner();
+      break;
+    case "error":
+      alert(msg.message);
+      break;
+  }
+}
+
+/* ---------- screens ---------- */
+function renderByStatus() {
+  if (state.status === "waiting") {
+    renderLobby(state.isHost);
+    return;
+  }
+  renderArena();
+  replayTranscript();
+  if (state.status === "finished" || state.winner) showWinner();
+}
+
+function renderCreate() {
+  app.innerHTML =
+    '<h1>🎭 AI Debate Arena</h1>' +
+    '<p class="sub">Two AI agents roast each other. Invite the audience, they vote, a winner is declared.</p>' +
+    '<div class="card">' +
+      '<label for="topic">Debate topic</label>' +
+      '<input id="topic" maxlength="160" value="AI coding assistants will make junior software engineers obsolete within five years">' +
+      '<label for="seconds">Debate length: <b id="secLabel">2:00</b> <span class="muted">(max 5:00)</span></label>' +
+      '<input id="seconds" type="range" min="30" max="300" step="15" value="120">' +
+      '<div class="row" style="margin-top:18px">' +
+        '<button id="createBtn">Create debate</button><span class="muted" id="createMsg"></span>' +
+      '</div>' +
+    '</div>';
+  const slider = document.getElementById("seconds");
+  slider.oninput = function () { document.getElementById("secLabel").textContent = fmt(+slider.value); };
+  document.getElementById("createBtn").onclick = async function () {
+    const topic = document.getElementById("topic").value.trim();
+    if (!topic) return;
+    const btn = document.getElementById("createBtn");
+    btn.disabled = true;
+    try {
+      const res = await api("/api/debates", {
+        method: "POST",
+        body: JSON.stringify({ topic: topic, seconds: +slider.value })
+      });
+      sessionStorage.setItem("host_" + res.id, res.host_token);
+      history.replaceState(null, "", "/host/" + res.id);
+      state.id = res.id;
+      state.hostToken = res.host_token;
+      state.isHost = true;
+      applyMeta(res);
+      connect();
+      renderLobby(true);
+    } catch (err) {
+      document.getElementById("createMsg").textContent = "Error: " + err.message;
+      btn.disabled = false;
+    }
+  };
+}
+
+function renderLobby(isHost) {
+  const invite = location.origin + "/join/" + state.id;
+  app.innerHTML =
+    '<h1>🎭 ' + esc(state.topic) + '</h1>' +
+    '<p class="sub">' + (isHost ? 'Invite your audience, then start the debate.' : 'Waiting for the host to start the debate…') + '</p>' +
+    '<div class="card">' +
+      '<div class="muted">Invite link — anyone with it can watch and vote</div>' +
+      '<div class="row" style="margin-top:8px">' +
+        '<div class="link" id="invite">' + esc(invite) + '</div>' +
+        '<button class="ghost" id="copyBtn">Copy</button>' +
+      '</div>' +
+      '<div class="muted" style="margin-top:20px">In the room (<span id="viewerCount">' + state.viewers.length + '</span>)</div>' +
+      '<div class="chips" id="chips"></div>' +
+      (isHost
+        ? '<div class="row" style="margin-top:22px"><button id="startBtn">Start debate</button>' +
+          '<span class="muted">' + fmt(state.seconds) + ' · ' + esc(state.agents.A.name) + ' vs ' + esc(state.agents.B.name) + '</span></div>'
+        : '<div class="row" style="margin-top:22px"><span class="muted">The debate will start automatically when the host is ready.</span></div>') +
+    '</div>';
+  updateChips();
+  document.getElementById("copyBtn").onclick = copyInvite;
+  if (isHost) document.getElementById("startBtn").onclick = startDebate;
+}
+
+function updateChips() {
+  const chips = document.getElementById("chips");
+  if (!chips) return;
+  const count = document.getElementById("viewerCount");
+  if (count) count.textContent = state.viewers.length;
+  chips.innerHTML = state.viewers.length
+    ? state.viewers.map(function (v) { return '<span class="chip">' + esc(v.emoji) + " " + esc(v.name) + '</span>'; }).join("")
+    : '<span class="muted">No one yet — share the link.</span>';
+}
+
+function copyInvite() {
+  const link = location.origin + "/join/" + state.id;
+  const btn = document.getElementById("copyBtn");
+  navigator.clipboard.writeText(link).then(function () {
+    btn.textContent = "Copied!";
+    setTimeout(function () { btn.textContent = "Copy"; }, 1500);
+  }).catch(function () {});
+}
+
+async function startDebate() {
+  const btn = document.getElementById("startBtn");
+  btn.disabled = true;
+  btn.textContent = "Starting…";
+  try {
+    await api("/api/debates/" + state.id + "/start", {
+      method: "POST",
+      headers: { "X-Host-Token": state.hostToken }
+    });
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false;
+    btn.textContent = "Start debate";
+  }
+}
+
+/* ---------- arena ---------- */
+function panelHTML(side) {
+  const agent = state.agents[side];
+  return '<div class="panel ' + side.toLowerCase() + '">' +
+    '<h3><span>' + esc(agent.name) + '</span><span class="who">' + (side === "A" ? "PRO" : "CON") + ' · ' + esc(agent.model) + '</span></h3>' +
+    '<div class="tag" id="tag-' + side + '"></div>' +
+    '<div class="text" id="text-' + side + '"></div>' +
+  '</div>';
+}
+
+function renderArena() {
+  if (document.getElementById("arena")) {
+    updateArenaMeta();
+    return;
+  }
+  app.innerHTML =
+    '<div id="arena">' +
+      '<div class="top">' +
+        '<div><strong id="topicLabel">' + esc(state.topic) + '</strong><div class="muted" id="statusLabel">live debate</div></div>' +
+        '<div class="row"><span class="timer" id="timer">--:--</span><span class="chip" id="viewersBadge">👀 0</span></div>' +
+      '</div>' +
+      '<div class="grid">' + panelHTML("A") + panelHTML("B") + '</div>' +
+      '<div class="vote">' +
+        '<div class="bar"><div class="a" id="barA"></div><div class="b" id="barB"></div></div>' +
+        '<div class="votes"><span id="voteA"></span><span id="voteB"></span></div>' +
+        '<div class="votebtns" id="votebtns">' +
+          '<button class="va" data-agent="A">Vote ' + esc(state.agents.A.name) + '</button>' +
+          '<button class="vb" data-agent="B">Vote ' + esc(state.agents.B.name) + '</button>' +
+        '</div>' +
+        '<div class="countdown" id="countdown"></div>' +
+        '<div class="muted" id="hostNote" style="margin-top:10px"></div>' +
+        '<div class="voters" id="voters"></div>' +
+      '</div>' +
+    '</div>';
+  document.querySelectorAll("[data-agent]").forEach(function (btn) {
+    btn.onclick = function () { vote(btn.getAttribute("data-agent")); };
+  });
+  if (!state.viewerId) {
+    document.getElementById("votebtns").style.display = "none";
+    document.getElementById("hostNote").textContent = "You're the host — the audience votes. Watch the leaderboard below.";
+  }
+  updateArenaMeta();
+  updateVotes();
+}
+
+function updateArenaMeta() {
+  const label = document.getElementById("statusLabel");
+  if (label) label.textContent = state.status === "finished" ? "finished" : "live debate";
+  updateTimer();
+  const badge = document.getElementById("viewersBadge");
+  if (badge) badge.textContent = "👀 " + state.viewers.length;
+}
+
+function updateTimer() {
+  const el = document.getElementById("timer");
+  if (!el) return;
+  el.textContent = fmt(state.secondsLeft);
+  el.style.color = state.secondsLeft <= 20 && state.status === "running" ? "var(--b)" : "";
+}
+
+function updateViewers() {
+  const badge = document.getElementById("viewersBadge");
+  if (badge) badge.textContent = "👀 " + state.viewers.length;
+  updateChips();
+  updateVoters();
+}
+
+function replayTranscript() {
+  state.transcript.forEach(function (turn) { setText(turn.agent, turn.text); });
+}
+
+function setText(side, text) {
+  const el = document.getElementById("text-" + side);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("live");
+  el.scrollTop = el.scrollHeight;
+}
+
+function appendText(side, chunk) {
+  const el = document.getElementById("text-" + side);
+  if (!el) return;
+  el.classList.add("live");
+  el.textContent += chunk;
+  el.scrollTop = el.scrollHeight;
+}
+
+function setTag(side, text) {
+  const el = document.getElementById("tag-" + side);
+  if (el) el.textContent = text;
+}
+
+function onTurnStart(msg) {
+  const el = document.getElementById("text-" + msg.agent);
+  if (el) {
+    el.textContent = "";
+    el.classList.add("live");
+  }
+  const tag = document.getElementById("tag-" + msg.agent);
+  if (tag) tag.textContent = msg.opening ? "opening statement…" : "rebuttal…";
+  const cd = document.getElementById("countdown");
+  if (cd) cd.textContent = "";
+}
+
+function finishTurn(msg) {
+  setText(msg.agent, msg.text);
+  setTag(msg.agent, "");
+}
+
+function showCooldown(seconds, nextName) {
+  const cd = document.getElementById("countdown");
+  if (!cd) return;
+  cd.textContent = "⏳ " + nextName + " speaks in " + Math.max(1, Math.round(seconds)) + "s…";
+}
+
+function updateVotes() {
+  const barA = document.getElementById("barA");
+  const barB = document.getElementById("barB");
+  if (!barA || !barB) return;
+  const total = state.votes.total || 0;
+  const pctA = total ? (state.votes.A / total) * 100 : 50;
+  barA.style.width = pctA + "%";
+  barB.style.width = 100 - pctA + "%";
+  const va = document.getElementById("voteA");
+  const vb = document.getElementById("voteB");
+  if (va) va.textContent = state.agents.A.name + "  " + state.votes.A;
+  if (vb) vb.textContent = state.agents.B.name + "  " + state.votes.B;
+  document.querySelectorAll("[data-agent]").forEach(function (btn) {
+    btn.classList.toggle("on", state.myVote === btn.getAttribute("data-agent"));
+  });
+  updateVoters();
+}
+
+function updateVoters() {
+  const box = document.getElementById("voters");
+  if (!box) return;
+  if (!state.voters.length) {
+    box.innerHTML = '<span class="muted">No one has joined yet.</span>';
+    return;
+  }
+  box.innerHTML = state.voters.map(function (v) {
+    let label = "hasn't voted";
+    let cls = "waiting";
+    if (v.agent === "A") { label = state.agents.A.name; cls = "vota"; }
+    if (v.agent === "B") { label = state.agents.B.name; cls = "votb"; }
+    return '<div class="voter"><span>' + esc(v.emoji) + " " + esc(v.name) + '</span>' +
+      '<span class="' + cls + '">' + esc(label) + '</span></div>';
+  }).join("");
+}
+
+async function vote(agent) {
+  if (state.status !== "running" || !state.viewerId) return;
+  try {
+    await api("/api/debates/" + state.id + "/vote", {
+      method: "POST",
+      headers: { "X-Viewer-Id": state.viewerId },
+      body: JSON.stringify({ agent: agent })
+    });
+    state.myVote = agent;
+    updateVotes();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function showWinner() {
+  if (!state.winner || document.getElementById("winner")) return;
+  const w = state.winner;
+  const tie = w.agent === "TIE";
+  const card = document.createElement("div");
+  card.id = "winner";
+  card.className = "card winner";
+  card.innerHTML =
+    '<div style="font-size:40px">' + (tie ? "🤝" : "🏆") + '</div>' +
+    '<h2>' + (tie ? "It’s a draw" : esc(w.name) + " wins") + '</h2>' +
+    '<p class="muted">' + esc(state.agents.A.name) + " " + w.votes.A + " · " +
+      esc(state.agents.B.name) + " " + w.votes.B + " votes</p>" +
+    '<div class="row" style="justify-content:center;margin-top:14px"><a class="btn-link" href="/">Start a new debate</a></div>';
+  app.prepend(card);
+  document.querySelectorAll("[data-agent]").forEach(function (btn) { btn.disabled = true; });
+  const cd = document.getElementById("countdown");
+  if (cd) cd.textContent = "";
+}
+
+/* ---------- join ---------- */
+function renderJoinForm() {
+  const emojis = ["🦊", "🐼", "🐸", "🦁", "🐙", "👽", "🤖", "🐺"];
+  app.innerHTML =
+    '<h1>🎭 ' + esc(state.topic) + '</h1>' +
+    '<p class="sub">Join the audience: watch the debate live and vote for the agent you think is winning.</p>' +
+    '<div class="card">' +
+      '<label for="name">Your name</label>' +
+      '<input id="name" maxlength="24" placeholder="Alex">' +
+      '<label>Pick an avatar</label>' +
+      '<div class="chips" id="emojis">' +
+        emojis.map(function (e) { return '<button class="emoji" data-emoji="' + e + '">' + e + '</button>'; }).join("") +
+      '</div>' +
+      '<div class="row" style="margin-top:18px"><button id="joinBtn">Join debate</button><span class="muted" id="joinMsg"></span></div>' +
+    '</div>';
+  let emoji = "🦊";
+  document.querySelectorAll(".emoji").forEach(function (btn) {
+    if (btn.getAttribute("data-emoji") === emoji) btn.classList.add("on");
+    btn.onclick = function () {
+      emoji = btn.getAttribute("data-emoji");
+      document.querySelectorAll(".emoji").forEach(function (b) { b.classList.toggle("on", b === btn); });
+    };
+  });
+  document.getElementById("joinBtn").onclick = async function () {
+    const name = document.getElementById("name").value.trim() || "Viewer";
+    const btn = document.getElementById("joinBtn");
+    btn.disabled = true;
+    try {
+      const res = await api("/api/debates/" + state.id + "/viewers", {
+        method: "POST",
+        body: JSON.stringify({ name: name, emoji: emoji })
+      });
+      localStorage.setItem("member_" + state.id, JSON.stringify({ viewer_id: res.viewer_id, name: res.name }));
+      state.viewerId = res.viewer_id;
+      state.isHost = false;
+      connect();
+      renderLobby(false);
+    } catch (err) {
+      document.getElementById("joinMsg").textContent = err.message;
+      btn.disabled = false;
+    }
+  };
+}
+
+async function initJoin(id) {
+  state.id = id;
+  try {
+    applyMeta(await api("/api/debates/" + id));
+  } catch (err) {
+    app.innerHTML = '<div class="card">Debate not found. <a href="/">Create one</a></div>';
+    return;
+  }
+  const saved = localStorage.getItem("member_" + id);
+  if (saved) {
+    try {
+      const viewer = JSON.parse(saved);
+      state.viewerId = viewer.viewer_id;
+    } catch (e) {}
+    connect();
+    renderLobby(false);
+  } else {
+    renderJoinForm();
+  }
+}
+
+async function initHost(id) {
+  state.id = id;
+  const urlToken = new URLSearchParams(location.search).get("token");
+  state.hostToken = sessionStorage.getItem("host_" + id) || urlToken;
+  state.isHost = true;
+  if (!state.hostToken) {
+    app.innerHTML = '<div class="card">Open this page from the tab where you created the debate.<br><a href="/">Create a new debate</a></div>';
+    return;
+  }
+  try {
+    applyMeta(await api("/api/debates/" + id));
+  } catch (err) {
+    app.innerHTML = '<div class="card">Debate not found. <a href="/">Create one</a></div>';
+    return;
+  }
+  connect();
+  renderLobby(true);
+}
+
+/* ---------- boot ---------- */
+function boot() {
+  const path = location.pathname;
+  if (path === "/") return renderCreate();
+  if (path.indexOf("/join/") === 0) return initJoin(path.split("/")[2]);
+  if (path.indexOf("/host/") === 0) return initHost(path.split("/")[2]);
+  app.innerHTML = '<div class="card">Page not found. <a href="/">Go home</a></div>';
+}
+boot();
+</script>
+</body>
+</html>
