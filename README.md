@@ -157,15 +157,13 @@ cp .env.example .env
 ### 1. Backend Setup
 
 ```bash
-cd backend
-
-# Create virtual environment and install dependencies
-uv venv
+# Create virtual environment at root and install dependencies
+uv venv .venv
 source .venv/bin/activate
-uv pip install -r requirements.txt
+uv pip install -r backend/requirements.txt
 
-# Start the FastAPI server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# Start the FastAPI server (from repository root or backend directory)
+PYTHONPATH=backend uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 - **API Root:** `http://localhost:8000`

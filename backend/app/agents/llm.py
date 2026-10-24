@@ -4,6 +4,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +26,9 @@ def get_llm(model_name: str, streaming: bool = True):
     return ChatGroq(
         model=model_name,
         streaming=streaming,
-        api_key=groq_api_key,
+        api_key=SecretStr(groq_api_key),
         temperature=0.7,
         max_tokens=400,
-        request_timeout=groq_timeout,
+        timeout=float(groq_timeout),
     )
+
