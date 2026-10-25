@@ -13,6 +13,8 @@ leaderboard. The winner is declared from the votes.
 - Debate length configurable up to 5 minutes
 - Creator lobby with invite link + joined viewers
 
+**Live Demo:** [Click here](https://neural-debate-1.onrender.com)
+
 ## Screens
 
 ![Create a debate](docs/screenshot-home.png)
